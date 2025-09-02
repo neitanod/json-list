@@ -30,3 +30,12 @@
     *   Corrected the truncation calculation to account for the "..." suffix, ensuring the final string length is correct.
     *   Set the default for `--truncate-to` to be the screen width minus one character.
 *   **Column Width:** Adjusted the column width calculation to prevent headers from expanding when the value is wider than the terminal width and truncation is not active.
+
+### Layout and Ordering
+
+*   **Wide Column Handling:** Implemented logic to handle wide columns (wider than the terminal) by printing them vertically in-place, preserving the original column order.
+*   **Column Order:** Modified the JSON parsing to use `IndexMap` to preserve the original key order from the input JSON, ensuring the output columns are not sorted alphabetically.
+
+### Performance
+
+*   **Binary Size:** Optimized the release build for size by enabling LTO, setting codegen-units to 1, panicking on abort, and optimizing for size (`opt-level = 'z'`). This reduced the binary size from 16MB to 1.9MB.

@@ -1,5 +1,6 @@
 use clap::Parser;
-use serde_json::{Value, Map};
+use serde_json::Value;
+use indexmap::IndexMap;
 use std::io::{self, Read};
 use std::cmp::max;
 use colored::*;
@@ -51,7 +52,7 @@ struct Cli {
     grep: Option<String>,
 }
 
-fn process_record(map: &Map<String, Value>, cli: &Cli, width: usize) {
+fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
     let mut columns = Vec::new();
     for (key, value) in map {
         let value_str = match value {
@@ -72,59 +73,94 @@ fn process_record(map: &Map<String, Value>, cli: &Cli, width: usize) {
     let truncate_to = cli.truncate_to.unwrap_or(width - 1);
 
     for (key, value_str) in columns {
-        let mut value_display = value_str.clone();
-        let effective_col_width;
+        let is_wide = value_str.len() > width;
 
-        if cli.truncate && value_str.len() > truncate_min {
-            if truncate_to > 3 {
-                value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
-            } else {
-                value_display = "...".to_string();
+        if is_wide {
+            // Print the current line of normal columns
+            if !header_line.is_empty() {
+                println!("{}", header_line);
+                println!("{}", value_line);
+                header_line.clear();
+                value_line.clear();
+                current_width = 0;
             }
-            effective_col_width = max(key.len(), value_display.len());
-        } else {
-            if value_str.len() > truncate_to {
-                effective_col_width = key.len();
+
+            // Print the wide column vertically
+            let header_colored = key.as_str().cyan().on_bright_black();
+            let value_colored = if key == cli.primary {
+                value_str.as_str().red()
+            } else if key == cli.highlight {
+                value_str.as_str().black().on_white()
+            } else if Some(&key) == cli.yellow.as_ref() {
+                value_str.as_str().black().on_yellow()
+            } else if Some(&key) == cli.green.as_ref() {
+                value_str.as_str().black().on_green()
+            } else if Some(&key) == cli.magenta.as_ref() {
+                value_str.as_str().black().on_magenta()
+            } else if Some(&key) == cli.red.as_ref() {
+                value_str.as_str().black().on_red()
             } else {
-                effective_col_width = max(key.len(), value_str.len());
+                value_str.as_str().yellow()
+            };
+            println!("{}", header_colored);
+            println!("{}", value_colored);
+
+        } else { // Normal column
+            let mut value_display = value_str.clone();
+            let effective_col_width;
+
+            if cli.truncate && value_str.len() > truncate_min {
+                if truncate_to > 3 {
+                    value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
+                } else {
+                    value_display = "...".to_string();
+                }
+                effective_col_width = max(key.len(), value_display.len());
+            } else {
+                if value_str.len() > truncate_to {
+                    effective_col_width = key.len();
+                } else {
+                    effective_col_width = max(key.len(), value_str.len());
+                }
             }
+
+            if current_width > 0 && current_width + effective_col_width + 1 > width {
+                println!("{}", header_line);
+                println!("{}", value_line);
+                header_line.clear();
+                value_line.clear();
+                current_width = 0;
+            }
+
+            let header = format!("{:<width$}", key.clone(), width = effective_col_width);
+            let value = format!("{:<width$}", value_display, width = effective_col_width);
+            
+            let header_colored = header.cyan().on_bright_black();
+
+            let value_colored;
+            if key == cli.primary {
+                value_colored = value.red();
+            } else if key == cli.highlight {
+                value_colored = value.black().on_white();
+            } else if Some(&key) == cli.yellow.as_ref() {
+                value_colored = value.black().on_yellow();
+            } else if Some(&key) == cli.green.as_ref() {
+                value_colored = value.black().on_green();
+            } else if Some(&key) == cli.magenta.as_ref() {
+                value_colored = value.black().on_magenta();
+            } else if Some(&key) == cli.red.as_ref() {
+                value_colored = value.black().on_red();
+            } else {
+                value_colored = value.yellow();
+            }
+
+            header_line.push_str(&format!("{} ", header_colored));
+            value_line.push_str(&format!("{} ", value_colored));
+            current_width += effective_col_width + 1;
         }
-
-        if current_width > 0 && current_width + effective_col_width + 1 > width {
-            println!("{}", header_line);
-            println!("{}", value_line);
-            header_line.clear();
-            value_line.clear();
-            current_width = 0;
-        }
-
-        let header = format!("{:<width$}", key, width = effective_col_width);
-        let value = format!("{:<width$}", value_display, width = effective_col_width);
-        
-        let header_colored = header.cyan().on_bright_black();
-
-        let value_colored;
-        if key == cli.primary {
-            value_colored = value.red();
-        } else if key == cli.highlight {
-            value_colored = value.black().on_white();
-        } else if Some(&key) == cli.yellow.as_ref() {
-            value_colored = value.black().on_yellow();
-        } else if Some(&key) == cli.green.as_ref() {
-            value_colored = value.black().on_green();
-        } else if Some(&key) == cli.magenta.as_ref() {
-            value_colored = value.black().on_magenta();
-        } else if Some(&key) == cli.red.as_ref() {
-            value_colored = value.black().on_red();
-        } else {
-            value_colored = value.yellow();
-        }
-
-        header_line.push_str(&format!("{} ", header_colored));
-        value_line.push_str(&format!("{} ", value_colored));
-        current_width += effective_col_width + 1;
     }
 
+    // Print any remaining normal columns
     if !header_line.is_empty() {
         println!("{}", header_line);
         println!("{}", value_line);
@@ -150,38 +186,33 @@ fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).expect("Failed to read from stdin");
 
-    let json_data: Value = serde_json::from_str(&buffer).unwrap_or_else(|e| {
+    let records: Vec<IndexMap<String, Value>> = serde_json::from_str(&buffer).unwrap_or_else(|e| {
         eprintln!("Error parsing JSON: {}", e);
         std::process::exit(1);
     });
 
-    if let Some(array) = json_data.as_array() {
-        if !cli.no_ruler {
-            println!("{}", "─".repeat(width).bright_black());
-        }
+    if !records.is_empty() && !cli.no_ruler {
+        println!("{}", "─".repeat(width).bright_black());
+    }
 
-        let mut first_record = true;
-        for obj in array.iter() {
-            if let Some(map) = obj.as_object() {
-                if let Some(re) = &grep_re {
-                    if !re.is_match(&obj.to_string()) {
-                        continue;
-                    }
-                }
-
-                if !first_record && !cli.no_ruler {
-                    println!("{}", "─".repeat(width).bright_black());
-                }
-                first_record = false;
-
-                process_record(map, &cli, width);
+    let mut first_record = true;
+    for map in &records {
+        let obj_str = serde_json::to_string(map).unwrap_or_default();
+        if let Some(re) = &grep_re {
+            if !re.is_match(&obj_str) {
+                continue;
             }
         }
 
-        if !cli.no_ruler {
-             println!("{}", "─".repeat(width).bright_black());
+        if !first_record && !cli.no_ruler {
+            println!("{}", "─".repeat(width).bright_black());
         }
-    } else {
-        eprintln!("Error: Input JSON is not an array.");
+        first_record = false;
+
+        process_record(map, &cli, width);
+    }
+
+    if !records.is_empty() && !cli.no_ruler {
+         println!("{}", "─".repeat(width).bright_black());
     }
 }
