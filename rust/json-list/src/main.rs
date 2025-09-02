@@ -32,8 +32,8 @@ struct Cli {
     #[arg(short, long, default_value = "id")]
     primary: String,
 
-    #[arg(short = 'l', long)]
-    highlight: Option<String>,
+    #[arg(short = 'l', long, default_value = "name")]
+    highlight: String,
 
     #[arg(short, long)]
     yellow: Option<String>,
@@ -69,15 +69,25 @@ fn process_record(map: &Map<String, Value>, cli: &Cli, width: usize) {
     let mut current_width = 0;
 
     let truncate_min = cli.truncate_min.unwrap_or(width);
-    let truncate_to = cli.truncate_to.unwrap_or(width);
+    let truncate_to = cli.truncate_to.unwrap_or(width - 1);
 
     for (key, value_str) in columns {
-        let mut effective_col_width = max(key.len(), value_str.len());
         let mut value_display = value_str.clone();
+        let effective_col_width;
 
         if cli.truncate && value_str.len() > truncate_min {
-            value_display = format!("{}...", &value_str[..truncate_to]);
+            if truncate_to > 3 {
+                value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
+            } else {
+                value_display = "...".to_string();
+            }
             effective_col_width = max(key.len(), value_display.len());
+        } else {
+            if value_str.len() > truncate_to {
+                effective_col_width = key.len();
+            } else {
+                effective_col_width = max(key.len(), value_str.len());
+            }
         }
 
         if current_width > 0 && current_width + effective_col_width + 1 > width {
@@ -91,15 +101,26 @@ fn process_record(map: &Map<String, Value>, cli: &Cli, width: usize) {
         let header = format!("{:<width$}", key, width = effective_col_width);
         let value = format!("{:<width$}", value_display, width = effective_col_width);
         
-        let mut value_colored = value.yellow();
-        if key == cli.primary { value_colored = value.red(); }
-        else if Some(&key) == cli.highlight.as_ref() { value_colored = value.white(); }
-        else if Some(&key) == cli.yellow.as_ref() { value_colored = value.yellow(); }
-        else if Some(&key) == cli.green.as_ref() { value_colored = value.green(); }
-        else if Some(&key) == cli.magenta.as_ref() { value_colored = value.magenta(); }
-        else if Some(&key) == cli.red.as_ref() { value_colored = value.red(); }
+        let header_colored = header.cyan().on_bright_black();
 
-        header_line.push_str(&format!("{} ", header.cyan().bold()));
+        let value_colored;
+        if key == cli.primary {
+            value_colored = value.red();
+        } else if key == cli.highlight {
+            value_colored = value.black().on_white();
+        } else if Some(&key) == cli.yellow.as_ref() {
+            value_colored = value.black().on_yellow();
+        } else if Some(&key) == cli.green.as_ref() {
+            value_colored = value.black().on_green();
+        } else if Some(&key) == cli.magenta.as_ref() {
+            value_colored = value.black().on_magenta();
+        } else if Some(&key) == cli.red.as_ref() {
+            value_colored = value.black().on_red();
+        } else {
+            value_colored = value.yellow();
+        }
+
+        header_line.push_str(&format!("{} ", header_colored));
         value_line.push_str(&format!("{} ", value_colored));
         current_width += effective_col_width + 1;
     }
