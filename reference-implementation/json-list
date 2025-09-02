@@ -1,0 +1,182 @@
+#!/bin/bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/parse-args"
+
+prepare_arg "--help" "-h" "Show this help and exit"
+
+prepare_arg "--width" "-w" "Especify output width (default: console width)"
+prepare_arg "--truncate" "-t" "Whether to truncate long values to given length"
+prepare_arg "--truncate-min" "-m" "Truncate values longer than this (default: console width)"
+prepare_arg "--truncate-to" "-n" "Truncate values to this length (default: output width)"
+prepare_arg "--no-ruler" "-x" "Do not print horizontal separator betwheen records"
+prepare_arg "--no-color" "-b" "Do not use colors"
+
+prepare_arg "--primary" "-p" "Especify column to highlight as primary (default: id)"
+prepare_arg "--highlight" "-l" "Especify column to highlight in white (default: name)"
+prepare_arg "--yellow" "-y" "Especify column to highlight in yellow"
+prepare_arg "--green" "-g" "Especify column to highlight in green"
+prepare_arg "--magenta" "-a" "Especify column to highlight in magenta"
+prepare_arg "--red" "-r" "Especify column to highlight in red"
+
+prepare_arg "--grep" "-e" "Only print records that match this expression"
+
+parse_args "$@"
+show_help_and_exit_if_requested
+
+COL_WIDTH=$(get_arg "--width" $(tput cols))
+TRUNCATE_DEFAULT=$(( $COL_WIDTH - 4 ))
+TRUNCATE_MIN=$(get_arg "--truncate-min" $TRUNCATE_DEFAULT)
+TRUNCATE_TO=$(get_arg "--truncate-to" $TRUNCATE_DEFAULT)
+HIGHLIGHT_PRIMARY=$(get_arg "--primary" 'id')
+HIGHLIGHT_YELLOW=$(get_arg "--yellow" 'name')
+HIGHLIGHT_GREEN=$(get_arg "--green")
+HIGHLIGHT_MAGENTA=$(get_arg "--magenta")
+HIGHLIGHT_RED=$(get_arg "--red")
+HIGHLIGHT_WHITE=$(get_arg "--highlight")
+GREP_EXPRESSION=$(get_arg "--grep")
+
+if eval_arg "--no-color"; then
+
+    COLOR_HEADER=""
+    COLOR_VALUE=""
+    COLOR_HIGHLIGHT_PRIMARY=""
+
+    COLOR_HIGHLIGHT_YELLOW=""
+    COLOR_HIGHLIGHT_GREEN=""
+    COLOR_HIGHLIGHT_MAGENTA=""
+    COLOR_HIGHLIGHT_RED=""
+    COLOR_HIGHLIGHT_WHITE=""
+
+    COLOR_RESET=""
+
+else 
+
+    # Define ANSI color codes
+    COLOR_HEADER="\\e[36;100m"  # Cyan over gray for headings
+    COLOR_VALUE="\\e[33m"   # Yellow for values
+    COLOR_HIGHLIGHT_PRIMARY="\\e[31m"  # Red for primary key
+
+    COLOR_HIGHLIGHT_YELLOW="\\e[30;43m"
+    COLOR_HIGHLIGHT_GREEN="\\e[30;42m"
+    COLOR_HIGHLIGHT_MAGENTA="\\e[30;45m"
+    COLOR_HIGHLIGHT_RED="\\e[30;41m"
+    COLOR_HIGHLIGHT_WHITE="\\e[30;47m"
+
+    COLOR_RESET="\\e[0m"    # Reset color
+
+fi
+
+# Read JSON from stdin
+data=$(cat)
+
+# Divider Line
+if ! eval_arg "--no-ruler"; then
+    awk -v width="$COL_WIDTH" 'BEGIN { for (i=0; i<width; i++) printf "─"; print "" }'
+fi
+
+# Iterate over each object in the JSON
+jq -c '.[]' <<< "$data" | while IFS= read -r row; do
+    # Obtain al keys in the object
+    keys=$(jq -r 'keys_unsorted[]' <<< "$row")
+
+    # Calculate max length for each key
+    declare -A max_length
+    for key in $keys; do
+        value=$(jq -r --arg key "$key" '.[$key] // "NULL"' <<< "$row")
+        key_length=${#key}
+        value_length=${#value}
+        max_length[$key]=$(( key_length > value_length ? key_length : value_length ))
+    done
+
+    current_width=0
+    header_line=""
+    value_line=""
+    full_value_line=""
+    for key in $keys; do
+        value=$(jq -r --arg key "$key" '.[$key] // "NULL"' <<< "$row")
+        col_width=${max_length[$key]}
+ 
+        # If current line is wider than desired output width, print it and start a new one
+        NEXT_WIDTH=$((current_width + col_width + 1))
+        TRUNCATED_WIDTH=$col_width
+        if eval_arg "--truncate" && (( col_width > TRUNCATE_MIN )); then
+          TRUNCATED_WIDTH=$((TRUNCATE_TO + 3))
+          NEXT_WIDTH=$((current_width + TRUNCATED_WIDTH))
+        fi
+
+        if (( NEXT_WIDTH > COL_WIDTH )); then
+            record_lines+="${header_line}\n${value_line}\n"
+            record_values_line+="${full_value_line}"
+            header_line=""
+            value_line=""
+            full_value_line=""
+            current_width=0
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_PRIMARY}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_PRIMARY}
+        else
+            COLOR_FOR_VAL=${COLOR_VALUE}
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_YELLOW}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_YELLOW}
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_GREEN}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_GREEN}
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_MAGENTA}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_MAGENTA}
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_RED}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_RED}
+        fi
+
+        if [[ "$key" == "${HIGHLIGHT_WHITE}" ]]; then
+            COLOR_FOR_VAL=${COLOR_HIGHLIGHT_WHITE}
+        fi
+
+        # Add key and value to the current lines
+        if eval_arg "--truncate" && (( col_width > TRUNCATE_MIN )); then
+          # print the first TRUNCATED_WIDTH characters
+          # header_line+=$(printf "${COLOR_HEADER}%-${TRUNCATED_WIDTH}s${COLOR_RESET} │ " "$key")
+          # value_line+=$(printf "${COLOR_FOR_VAL}%s...${COLOR_RESET} │ " "${value:0:$TRUNCATE_TO}")
+          header_line+=$(printf "${COLOR_HEADER}%-${TRUNCATED_WIDTH}s${COLOR_RESET} " "$key")
+          value_line+=$(printf "${COLOR_FOR_VAL}%s...${COLOR_RESET} " "${value:0:$TRUNCATE_TO}")
+        else
+          if (( col_width > COL_WIDTH )); then
+            header_line+=$(printf "${COLOR_HEADER}%s${COLOR_RESET}" "$key")
+            value_line+=$(printf "${COLOR_FOR_VAL}%-${col_width}s${COLOR_RESET}" "$value")
+          else
+            # header_line+=$(printf "${COLOR_HEADER}%-${col_width}s${COLOR_RESET} │ " "$key")
+            # value_line+=$(printf "${COLOR_FOR_VAL}%-${col_width}s${COLOR_RESET} │ " "$value")
+            header_line+=$(printf "${COLOR_HEADER}%-${col_width}s${COLOR_RESET} " "$key")
+            value_line+=$(printf "${COLOR_FOR_VAL}%-${col_width}s${COLOR_RESET} " "$value")
+          fi
+        fi
+        full_value_line+="${value}"
+        current_width=$((current_width + TRUNCATED_WIDTH + 1))
+    done
+ 
+    # Print the last line if it's not empty
+    if [[ -n "$header_line" ]]; then
+      record_lines+="${header_line}\n${value_line}"
+      record_values_line+="${value_line}"
+    fi
+
+    # Only print the record if it matches the grep expression
+    if [[ -z "$GREP_EXPRESSION" || "$record_values_line" =~ $GREP_EXPRESSION ]]; then
+        echo -e "$record_lines"
+        # Divider Line
+        if ! eval_arg "--no-ruler"; then
+            awk -v width="$COL_WIDTH" 'BEGIN { for (i=0; i<width; i++) printf "─"; print "" }'
+        fi
+    fi
+
+    record_lines=""
+    record_values_line=""
+
+done

@@ -1,0 +1,167 @@
+#!/bin/bash
+
+# Variables globales para almacenar los argumentos y descripciones
+declare -g -A __DESCRIPTIONS     # Almacena las descripciones de los argumentos
+declare -g -A __VALUES           # Almacena los valores de los argumentos con nombre
+declare -g -A __ALIASES          # Almacena los aliases entre versión corta y versión larga
+declare -g -a __POSITIONAL_ARGS  # Array para almacenar los argumentos posicionales (sin nombre)
+
+# Función para preparar argumentos con nombre
+function prepare_arg() {
+    local long="$1"
+    local short="$2"
+    local description="$3"
+
+    # Registrar la descripción y el alias si existe versión corta
+    __DESCRIPTIONS["$long"]="$description"
+
+    # Asociar la versión corta con la versión larga (alias)
+    if [[ -n "$short" ]]; then
+        __ALIASES["$short"]="$long"
+    fi
+}
+
+# Función para preparar argumentos booleanos (sin valor, solo flags)
+function prepare_boolean_arg() {
+    local long="$1"
+    local short="$2"
+    local description="$3"
+
+    __DESCRIPTIONS["$long"]="$description"
+    __VALUES["$long"]=false
+
+    # Asociar la versión corta con la versión larga (alias) si se provee una versión corta
+    if [[ -n "$short" ]]; then
+        __ALIASES["$short"]="$long"
+    fi
+}
+
+# Función para obtener el valor de un argumento con un valor por defecto opcional
+function get_arg() {
+    local key="$1"
+    local default="$2"
+
+    # Buscar el alias si es necesario
+    if [[ -n "${__ALIASES[$key]}" ]]; then
+        key="${__ALIASES[$key]}"
+    fi
+
+    # Si el argumento es un número, significa que queremos un argumento posicional
+    if [[ "$key" =~ ^[0-9]+$ ]]; then
+        echo "${__POSITIONAL_ARGS[$((key - 1))]:-$default}"
+    else
+        # Si no es un número, es un argumento con nombre (clave larga o alias)
+        if [[ -n "$default" && ${__VALUES[$key]} == true ]]; then
+            echo "${default}"
+        else
+            echo "${__VALUES[$key]:-$default}"
+        fi
+    fi
+}
+
+function eval_arg() {
+    arg=$(get_arg "$1")
+    if [[ "$arg" == "false" || "$arg" == "" ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Función para parsear los argumentos
+function parse_args() {
+    for arg in "$@"; do
+        case $arg in
+            --*=*)
+                # Argumento de la forma --key=value
+                local long="${arg%%=*}"
+                local value="${arg#*=}"
+                __VALUES["$long"]="$value"
+                ;;
+            -?=*)
+                # Argumento de la forma -k=value
+                local short="${arg%%=*}"
+                local value="${arg#*=}"
+                if [[ -n "${__ALIASES[$short]}" ]]; then
+                    local long="${__ALIASES[$short]}"
+                    __VALUES["$long"]="$value"
+                else
+                    __POSITIONAL_ARGS+=("$arg") # Agregar como argumento posicional
+                fi
+                ;;
+            --?*)
+                # Argumento booleano de la forma --key
+                local long="$arg"
+                __VALUES["$long"]=true
+                ;;
+            -?*)
+                # Argumento booleano de la forma -k
+                local short="$arg"
+                if [[ -n "${__ALIASES[$short]}" ]]; then
+                    local long="${__ALIASES[$short]}"
+                    __VALUES["$long"]=true
+                else
+                    # Si no es un alias válido, agregarlo como un argumento posicional
+                    __POSITIONAL_ARGS+=("$arg")
+                fi
+                ;;
+            *)
+                # Acumular los argumentos posicionales (sin nombre) en el array __POSITIONAL_ARGS
+                __POSITIONAL_ARGS+=("$arg")
+                ;;
+        esac
+    done
+}
+
+# Función para mostrar la ayuda básica de los argumentos
+function show_args_help() {
+    for long in "${!__DESCRIPTIONS[@]}"; do
+        # Buscar si existe un alias corto
+        short=""
+        for key in "${!__ALIASES[@]}"; do
+            if [[ "${__ALIASES[$key]}" == "$long" ]]; then
+                short="$key"
+                break
+            fi
+        done
+        
+        if [[ -n "$short" ]]; then
+            # Si hay una versión corta, mostrar ambas
+            echo "     $long, $short: ${__DESCRIPTIONS[$long]}"
+        else
+            # Si no hay versión corta, mostrar solo la versión larga
+            echo "     $long: ${__DESCRIPTIONS[$long]}"
+        fi
+    done
+}
+
+# Función para verificar si la opción de ayuda fue solicitada (no detiene la ejecución)
+function show_help_if_requested() {
+    if eval_arg "--help"; then
+        echo "Usage:"
+        echo "   $1"
+        show_args_help
+        # Permitir que el usuario continúe la ejecución para mostrar más ayuda u otros pasos
+    fi
+}
+
+# Función para verificar si la opción de ayuda fue solicitada y salir
+function show_help_and_exit_if_requested() {
+    if eval_arg "--help"; then
+        echo "Usage:"
+        echo "   $1"
+        show_args_help
+        exit 0
+    fi
+}
+
+# Nueva función para listar todos los argumentos capturados
+function show_args() {
+    for key in "${!__VALUES[@]}"; do
+        echo "$key = ${__VALUES[$key]}"
+    done
+    for i in "${!__POSITIONAL_ARGS[@]}"; do
+        echo "Positional $((i+1)): ${__POSITIONAL_ARGS[$i]}"
+    done
+}
+

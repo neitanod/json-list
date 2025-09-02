@@ -53,7 +53,10 @@ struct Cli {
 }
 
 fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
-    let mut columns = Vec::new();
+    let truncate_min = cli.truncate_min.unwrap_or(width);
+    let truncate_to = cli.truncate_to.unwrap_or(width - 1);
+
+    let mut processed_columns = Vec::new();
     for (key, value) in map {
         let value_str = match value {
             Value::String(s) => s.clone(),
@@ -62,21 +65,26 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
             Value::Null => "null".to_string(),
             _ => value.to_string(),
         };
-        columns.push((key.clone(), value_str));
+
+        let mut value_display = value_str.clone();
+        if cli.truncate && value_str.len() > truncate_min {
+            if truncate_to > 3 {
+                value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
+            } else {
+                value_display = "...".to_string();
+            }
+        }
+        processed_columns.push((key.clone(), value_display, value_str));
     }
 
     let mut header_line = String::new();
     let mut value_line = String::new();
     let mut current_width = 0;
 
-    let truncate_min = cli.truncate_min.unwrap_or(width);
-    let truncate_to = cli.truncate_to.unwrap_or(width - 1);
-
-    for (key, value_str) in columns {
-        let is_wide = value_str.len() > width;
+    for (key, value_display, _original_value_str) in processed_columns {
+        let is_wide = value_display.len() > width;
 
         if is_wide {
-            // Print the current line of normal columns
             if !header_line.is_empty() {
                 println!("{}", header_line);
                 println!("{}", value_line);
@@ -85,43 +93,30 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
                 current_width = 0;
             }
 
-            // Print the wide column vertically
             let header_colored = key.as_str().cyan().on_bright_black();
             let value_colored = if key == cli.primary {
-                value_str.as_str().red()
+                value_display.as_str().red()
             } else if key == cli.highlight {
-                value_str.as_str().black().on_white()
+                value_display.as_str().black().on_white()
             } else if Some(&key) == cli.yellow.as_ref() {
-                value_str.as_str().black().on_yellow()
+                value_display.as_str().black().on_yellow()
             } else if Some(&key) == cli.green.as_ref() {
-                value_str.as_str().black().on_green()
+                value_display.as_str().black().on_green()
             } else if Some(&key) == cli.magenta.as_ref() {
-                value_str.as_str().black().on_magenta()
+                value_display.as_str().black().on_magenta()
             } else if Some(&key) == cli.red.as_ref() {
-                value_str.as_str().black().on_red()
+                value_display.as_str().black().on_red()
             } else {
-                value_str.as_str().yellow()
+                value_display.as_str().yellow()
             };
             println!("{}", header_colored);
             println!("{}", value_colored);
-
-        } else { // Normal column
-            let mut value_display = value_str.clone();
+        } else {
             let effective_col_width;
-
-            if cli.truncate && value_str.len() > truncate_min {
-                if truncate_to > 3 {
-                    value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
-                } else {
-                    value_display = "...".to_string();
-                }
-                effective_col_width = max(key.len(), value_display.len());
+            if !cli.truncate && value_display.len() > truncate_to {
+                effective_col_width = key.len();
             } else {
-                if value_str.len() > truncate_to {
-                    effective_col_width = key.len();
-                } else {
-                    effective_col_width = max(key.len(), value_str.len());
-                }
+                effective_col_width = max(key.len(), value_display.len());
             }
 
             if current_width > 0 && current_width + effective_col_width + 1 > width {
@@ -160,7 +155,6 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
         }
     }
 
-    // Print any remaining normal columns
     if !header_line.is_empty() {
         println!("{}", header_line);
         println!("{}", value_line);

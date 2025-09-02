@@ -1,0 +1,1 @@
+[{"id":1,"name":"A short name","description":"This is a very long description that should be truncated because it is much longer than the terminal width and it will demonstrate the truncation functionality."},{"id":2,"name":"Another name","description":"This is another long description that will also be truncated."}]
