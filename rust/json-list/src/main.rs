@@ -93,7 +93,8 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
                 current_width = 0;
             }
 
-            let header_colored = key.as_str().cyan().on_bright_black();
+            let header = format!("{:<width$}", key, width = width - 1);
+            let header_colored = header.as_str().cyan().on_bright_black();
             let value_colored = if key == cli.primary {
                 value_display.as_str().red()
             } else if key == cli.highlight {

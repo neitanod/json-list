@@ -39,3 +39,11 @@
 ### Performance
 
 *   **Binary Size:** Optimized the release build for size by enabling LTO, setting codegen-units to 1, panicking on abort, and optimizing for size (`opt-level = 'z'`). This reduced the binary size from 16MB to 1.9MB.
+
+### Bug Fixes & Refinements (continued)
+
+*   **Truncation Layout:** Fixed a bug where truncated columns were not being laid out correctly. The layout logic now correctly considers the truncated width of the value, not the original width.
+
+### UI Improvements
+
+*   **Wide Column Headers:** Padded the headers of wide columns to the full terminal width to improve readability.
