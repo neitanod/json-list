@@ -2,7 +2,7 @@
 
 A command-line tool to display a list of JSON objects in a compact, human-readable format.
 
-This is a Rust port of the original [json-list](https://github.com/neitanod/json-list) bash script, with a focus on performance.
+This is a Rust port of the original [json-list](https://github.com/neitanod/json-list/blob/main/reference-implementation/json-list) bash script, with a focus on performance.
 
 ## Features
 
