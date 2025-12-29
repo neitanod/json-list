@@ -12,42 +12,55 @@ use regex::Regex;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Specify output width (default: console width)
     #[arg(short, long)]
     width: Option<usize>,
 
+    /// Whether to truncate long values to given length
     #[arg(short, long)]
     truncate: bool,
 
+    /// Truncate values longer than this (default: console width)
     #[arg(short = 'm', long)]
     truncate_min: Option<usize>,
 
+    /// Truncate values to this length (default: output width)
     #[arg(short = 'n', long)]
     truncate_to: Option<usize>,
 
+    /// Do not print horizontal separator between records
     #[arg(short = 'x', long)]
     no_ruler: bool,
 
+    /// Do not use colors
     #[arg(short = 'b', long)]
     no_color: bool,
 
+    /// Specify column to highlight as primary (default: id)
     #[arg(short, long, default_value = "id")]
     primary: String,
 
+    /// Specify column to highlight in white (default: name)
     #[arg(short = 'l', long, default_value = "name")]
     highlight: String,
 
+    /// Specify column to highlight in yellow
     #[arg(short, long)]
     yellow: Option<String>,
 
+    /// Specify column to highlight in green
     #[arg(short = 'g', long)]
     green: Option<String>,
 
+    /// Specify column to highlight in magenta
     #[arg(short = 'a', long)]
     magenta: Option<String>,
 
+    /// Specify column to highlight in red
     #[arg(short, long)]
     red: Option<String>,
 
+    /// Only print records that match this expression
     #[arg(short = 'e', long)]
     grep: Option<String>,
 }
