@@ -87,7 +87,7 @@ The `Cargo.toml` includes aggressive size optimizations:
 When the user indicates a feature is complete and ready to commit:
 1. Create a git commit with changes
 2. Write a session summary in `ai/journal/YYYY-MM-DD_Session_summary.md`
-3. Use format: `2025-12-18_Session_summary.md` (with `_Part_2.md`, `_Part_3.md` suffixes if session continues)
+3. Example: `2025-09-02_Session_summary.md` (with `_Part_2.md`, `_Part_3.md` suffixes if session continues)
 
 ## Reference Implementation
 

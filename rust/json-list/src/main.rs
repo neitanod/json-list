@@ -80,7 +80,7 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
         };
 
         let mut value_display = value_str.clone();
-        if cli.truncate && value_str.len() > truncate_min {
+        if cli.truncate && value_str.len() > truncate_min && value_str.len() > truncate_to {
             if truncate_to > 3 {
                 value_display = format!("{}...", &value_str[..(truncate_to - 3)]);
             } else {
@@ -176,7 +176,22 @@ fn process_record(map: &IndexMap<String, Value>, cli: &Cli, width: usize) {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // Normalize truncate flags:
+    // - If only -m is specified, use it for both min and to
+    // - If only -n is specified, leave -m as default (width), just enable truncate
+    // - If both are specified, use each independently
+    match (cli.truncate_min, cli.truncate_to) {
+        (Some(m), None) => {
+            cli.truncate_to = Some(m);
+            cli.truncate = true;
+        }
+        (None, Some(_)) | (Some(_), Some(_)) => {
+            cli.truncate = true;
+        }
+        (None, None) => {}
+    }
 
     if cli.no_color || !atty::is(Stream::Stdout) {
         colored::control::set_override(false);
